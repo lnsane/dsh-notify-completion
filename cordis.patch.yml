@@ -1,0 +1,34 @@
+# The dsh-notify-completion bundle patch.
+#
+# Applied after the profile's other bundle layers and before the profile's own
+# cordis.patch.yml, so a profile can still override this row by id.
+#
+# One row, inserted over the profile root. The plugin has no service
+# dependencies beyond the two it declares itself, so no `inject` is needed
+# here: `inject` on this row would only gate the row on services that
+# dsh-base already provides.
+#
+# The row id is `notify-completion` and the plugin's default configuration is
+# complete, so an enabled plugin needs no `config:` block at all. To change
+# behavior, add a patch entry for this id in the profile's cordis.patch.yml —
+# a patch replaces the whole `config`, so restate every key you want to keep:
+
+- insert:
+    - id: notify-completion
+      name: 'dsh-notify-completion'
+      config:
+        enabled: true
+        appId: DeepSeek.Harness.CompletionNotify
+        appName: DeepSeek Harness
+        titleTemplate: DSH 对话完成
+        messageTemplate: |-
+          {{sessionTitle}}
+          {{cwd}}
+          用时 {{duration}}
+        includeSubagents: false
+        silent: false
+        fallbackSeconds: 10
+        lastTextChars: 120
+        throttleMs: 1500
+        powershellPath: ''
+        debugLog: false

@@ -1,0 +1,66 @@
+{
+  "name": "dsh-notify-completion",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness plugin: raise a Windows system notification when an agent finishes a turn",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "notification",
+    "toast",
+    "windows"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "lnsane",
+    "email": "1137738840@qq.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lnsane/dsh-notify-completion.git"
+  },
+  "homepage": "https://github.com/lnsane/dsh-notify-completion#readme",
+  "bugs": {
+    "url": "https://github.com/lnsane/dsh-notify-completion/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./render": "./lib/render.js",
+    "./notify-windows.ps1": "./lib/notify-windows.ps1",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/render.js",
+    "lib/notify-windows.ps1",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "test:notify": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File lib/notify-windows.ps1 -Title \"dsh-notify-completion\" -Message \"Notification shim self-test\" -Diagnostic -FallbackSeconds 5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4"
+  }
+}

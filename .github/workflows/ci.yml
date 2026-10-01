@@ -1,0 +1,54 @@
+name: CI
+
+# The plugin's only runtime dependency is schemastery, and its tests assert
+# behavior that is Windows-specific (the notification shim, the base64 payload).
+# windows-latest is therefore the only meaningful runner: a Linux job would skip
+# the shim tests and prove nothing about the delivered feature.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the test suite
+        run: npm test
+
+      - name: Verify the published file set is complete
+        shell: pwsh
+        run: |
+          # `npm pack --dry-run` lists exactly what a consumer would receive, so
+          # this catches a `files` entry that forgot the shim or the bundle patch.
+          $listing = npm pack --dry-run --json | ConvertFrom-Json
+          $files = $listing[0].files.name
+
+          $required = @(
+            'lib/index.js',
+            'lib/render.js',
+            'lib/notify-windows.ps1',
+            'cordis.patch.yml',
+            'README.md',
+            'LICENSE'
+          )
+
+          $missing = $required | Where-Object { $_ -notin $files }
+          if ($missing) {
+            Write-Error "the package is missing required files: $($missing -join ', ')"
+            exit 1
+          }
+
+          Write-Host "packaged $($files.Count) files; every required file is present."

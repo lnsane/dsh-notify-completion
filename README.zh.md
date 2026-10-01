@@ -202,22 +202,37 @@ messageTemplate: |-
 
 **转义没有手写。** Toast XML 文本统一走 `[System.Security.SecurityElement]::Escape`——它正是 Toast schema 所接受实体形式的精确逆运算，所以像 `<script>&"` 这样的标题无法破坏它所嵌入的 XML。已有测试覆盖这一点。
 
+**PowerShell 子进程不能用 detached 启动。** 这是本插件里最不直观、也是代价最大的一条规则。Windows 上以 detached 方式创建的子进程不会继承父进程的控制台/会话关联，于是 WinRT Toast API 会**报告成功却什么都不显示**——`notify-windows.ps1` 退出码仍是 0、照样打印 `tier=winrt-toast`，但通知永远不会出现。插件写下的任何日志都看不出异常。
+
+在真实 Electron 运行时下（`DeepSeek Harness.exe` + `ELECTRON_RUN_AS_NODE=1`）直接实测，比对 Windows 自己维护的 `LastNotificationAddedTime`：
+
+| spawn 选项 | 通知是否显示 |
+| --- | --- |
+| `detached: true, stdio: 'ignore', windowsHide: true` | **不显示**（退出码仍是 0） |
+| `stdio: 'ignore', windowsHide: true` | 显示 |
+| `detached: true, stdio: 'ignore'` | **不显示** |
+| `stdio: 'ignore'` | 显示 |
+
+唯一起作用的就是 `detached`，而它在这里毫无收益：子进程很短命、且 stdio 被丢弃，仅靠 `unref()` 就足以不让它拖住宿主。现在由 `test/delivery.test.js` 守住这条——它会跑一个真实轮次、断言 Windows 确实记录了通知，并另外断言源码里不含 `detached:`。
+
 ## 开发
 
 ```powershell
 npm install
-npm test               # 42 项测试：纯逻辑、通知脚本，以及真实的 Cordis 运行时
+npm test               # 47 项测试：纯逻辑、通知脚本、scope 路由，以及真实投递
 node demo.mjs          # 装载插件并真实弹出一条 Windows 通知
 npm run test:notify    # 只验证通知脚本
 ```
 
 `demo.mjs` 是端到端检查：它搭一个 Cordis 上下文并提供插件注入的两个服务，发出一次 `running → idle` 轮次，且把 `powershellPath` 留作默认值，因此会走真实的 shim、弹出真实的通知。
 
-测试分三层：
+测试分四层：
 
 - **`test/render.test.js`** —— 轮次完成判定规则、模板渲染、耗时格式化、载荷编码，全部基于假时钟。
 - **`test/integration.test.js`** —— 插件的公开契约（`name` / `inject` / `apply` / `Config`），以及真实的 `notify-windows.ps1`：它能通过 PowerShell 语法解析、用约定的退出码拒绝畸形载荷、真的弹出一条通知，并且能扛住塞满 XML 与 shell 元字符的标题。
 - **`test/runtime.test.js`** —— 把插件装进真实的 `@deepseek-ai/cordis` 上下文并向它发事件。投递结果的观测方式是：把 `powershellPath` 指向一个必然不存在的可执行文件，于是产生的 `ENOENT` 会带上完整的 argv——这样"有没有通知"和"发了什么"都可断言，同时不必让每次跑测试都真的弹窗。
+- **`test/scope.test.js`** —— 补上 `runtime.test.js` 够不到的那层拓扑：插件作为 agent loop 的**兄弟 fiber** 挂载，事件则完全按 `@deepseek-ai/dsh-agent` 的做法、通过 agent 的 **scope carrier**（`scopeTarget(agent, agent)`）派发。不带 scope 的 `ctx.emit` 能到达插件，而真实带 scope 的派发却未必——这一层就是为了把这个差别钉住。
+- **`test/delivery.test.js`** —— 唯一能证明"用户真的会看到"的一层：它跑一个真实轮次，并断言 Windows 自己维护的 `LastNotificationAddedTime` 确实前进。退出码成功不构成证据——detached 子进程退 0 却什么都不显示——所以这一层查的是操作系统的记录，而不是 shim 的自我陈述。
 
 通知脚本相关测试都以 `-NoRegister` 运行，因此测试套件**不会**改动你机器上的注册表。
 

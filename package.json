@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-completion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DeepSeek Harness plugin: raise a Windows system notification when an agent finishes a turn",
   "keywords": [
     "dsh",
@@ -62,6 +62,7 @@
     "@deepseek-ai/cordis": "^4.0.1"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.4"
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-scope": "^0.1.1-rc.2"
   }
 }

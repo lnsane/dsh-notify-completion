@@ -1,9 +1,15 @@
 name: CI
 
-# The plugin's only runtime dependency is schemastery, and its tests assert
-# behavior that is Windows-specific (the notification shim, the base64 payload).
-# windows-latest is therefore the only meaningful runner: a Linux job would skip
-# the shim tests and prove nothing about the delivered feature.
+# windows-latest is the only meaningful runner: the plugin's transport is a
+# PowerShell shim posting a WinRT toast, and its tests assert Windows-specific
+# behavior (the shim, the base64 payload, scope routing). A Linux job would skip
+# all of it and prove nothing about the delivered feature.
+#
+# One assertion cannot run here: `test/delivery.test.js` checks that Windows
+# actually RECORDS a notification, which needs an interactive desktop session. A
+# GitHub runner has none, so that test detects the absence and skips its
+# assertion instead of failing. Everything else — including the deterministic
+# "no detached spawn" guard — runs in full.
 
 on:
   push:

@@ -202,22 +202,37 @@ The rule is deliberately narrow, because a notification that fires at the wrong 
 
 **Escaping is not hand-rolled.** Toast XML goes through `[System.Security.SecurityElement]::Escape`, which is the exact inverse of the entity forms the toast schema accepts, so a title like `<script>&"` cannot break the XML it is embedded in. A test covers this.
 
+**The PowerShell child is not spawned detached.** This is the least obvious rule in the plugin and the one that cost the most to find. A detached child on Windows is created without the parent's console/session association, and the WinRT toast API then *reports success while displaying nothing* — `notify-windows.ps1` exits 0, `tier=winrt-toast` is printed, and no notification ever appears. It is silent in every log the plugin writes.
+
+Measured directly under the real Electron runtime (`DeepSeek Harness.exe` with `ELECTRON_RUN_AS_NODE=1`), comparing Windows' own `LastNotificationAddedTime` for the AppUserModelId:
+
+| Spawn options | Notification displayed |
+| --- | --- |
+| `detached: true, stdio: 'ignore', windowsHide: true` | **no** (exit code still 0) |
+| `stdio: 'ignore', windowsHide: true` | yes |
+| `detached: true, stdio: 'ignore'` | **no** |
+| `stdio: 'ignore'` | yes |
+
+`detached` is the only variable that matters, and it buys nothing here: the child is short-lived and its stdio is discarded, so `unref()` alone keeps it from holding the host open. `test/delivery.test.js` now guards this — it drives a real turn and asserts Windows actually recorded the notification, and separately asserts the source contains no `detached:`.
+
 ## Development
 
 ```powershell
 npm install
-npm test               # 42 tests: pure logic, the shim, and a real Cordis runtime
+npm test               # 47 tests: pure logic, the shim, scope routing, and real delivery
 node demo.mjs          # load the plugin and raise one real Windows notification
 npm run test:notify    # exercise the notification shim alone
 ```
 
 `demo.mjs` is the end-to-end check: it builds a Cordis context with the two services the plugin injects, emits a `running → idle` turn, and leaves `powershellPath` at its default so the real shim runs and a real toast appears.
 
-The suite covers three layers:
+The suite covers four layers:
 
 - **`test/render.test.js`** — the turn-completion rule, template rendering, duration formatting, and payload encoding, all against a fake clock.
 - **`test/integration.test.js`** — the plugin's public contract (`name` / `inject` / `apply` / `Config`), plus the real `notify-windows.ps1`: it parses as valid PowerShell, rejects a malformed payload with its documented exit code, actually delivers a notification, and survives a title full of XML and shell metacharacters.
 - **`test/runtime.test.js`** — the plugin loaded into a real `@deepseek-ai/cordis` context, with events emitted through it. Delivery is observed by pointing `powershellPath` at an executable that cannot exist: the resulting `ENOENT` carries the exact argv, so both "did it notify" and "what did it send" are assertable without raising a toast on every test run.
+- **`test/scope.test.js`** — the topology `runtime.test.js` cannot reach: the plugin mounted as a *sibling* fiber of the agent loop, with the event dispatched through the agent's **scope carrier** (`scopeTarget(agent, agent)`) exactly as `@deepseek-ai/dsh-agent` does it. An unscoped `ctx.emit` reaches the plugin even when a real scoped dispatch would not, so this layer exists to keep that difference honest.
+- **`test/delivery.test.js`** — the only layer that proves a user would actually see something: it drives a real turn and asserts Windows' own `LastNotificationAddedTime` for the plugin's AppUserModelId advanced. A passing exit code is not evidence — a `detached` child exits 0 while displaying nothing — so this layer checks the operating system's record rather than the shim's opinion.
 
 The shim tests run with `-NoRegister`, so the suite never writes to your registry.
 

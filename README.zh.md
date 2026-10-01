@@ -30,19 +30,30 @@
 
 ## 安装
 
-插件以 DSH **bundle** 的形式分发：包内的 `cordis.patch.yml` 会把插件行插入 profile。
+插件以 DSH **bundle** 的形式分发：包内的 `cordis.patch.yml` 会把插件行插入 profile。因此「装包」和「注册 bundle」其实是同一步——用 DSH 自带的插件管理器一次完成。
 
-### 从 Git 仓库安装
+### 推荐方式
 
 ```powershell
-# 1. 让 profile 能解析到这个包
-cd $env:DSH_PROFILE_DIR          # 例如 C:\Users\<你>\.dsh\profiles\desktop
-npm install "github:lnsane/dsh-notify-completion"
-
-# 2. 把 bundle 加进 profile 的 bundle 列表
+dsh plugin --profile desktop add git+https://github.com/lnsane/dsh-notify-completion.git
 ```
 
-编辑 `$env:DSH_PROFILE_DIR\package.json`：
+这条命令会把依赖写进 `$DSH_PROFILE_DIR\package.json`，**并**把 `dsh-notify-completion` 追加到其中的 `dsh.profile.bundles` 列表。重启 DSH 即生效。
+
+把 `desktop` 换成你实际使用的 profile 即可（例如 `dsh plugin --profile web add …`）。
+
+> **请用 `git+https://…`，不要用 `github:owner/repo` 简写。** DSH 底层用 pnpm 安装，pnpm 能把该简写正常解析成 HTTPS；但如果你哪天改用普通的 `npm` 安装，`github:` 简写会被解析成 **SSH**（`git+ssh://git@github.com/…`），在没有配置 GitHub SSH key 的机器上会直接失败。显式写 `git+https://` 则两种包管理器都能用。
+
+### 手动安装
+
+不想用插件管理器的话，把包装进 profile 并自行注册 bundle：
+
+```powershell
+cd $env:DSH_PROFILE_DIR          # 例如 C:\Users\<你>\.dsh\profiles\desktop
+pnpm add git+https://github.com/lnsane/dsh-notify-completion.git
+```
+
+然后把 bundle 名加进 `$env:DSH_PROFILE_DIR\package.json`：
 
 ```json
 {
@@ -62,11 +73,26 @@ npm install "github:lnsane/dsh-notify-completion"
 
 ### 验证是否装上
 
-插件会作为一个名为 `notify-completion` 的 Loader 条目出现：
+```powershell
+dsh plugin --profile desktop list
+```
+
+它会列出该 profile 已安装的插件包：
+
+```
+dsh-profile-desktop C:\Users\<你>\.dsh\profiles\desktop (PRIVATE)
+│
+│   dependencies:
+└── dsh-notify-completion@0.1.0
+```
+
+插件的 Loader 条目名为 `notify-completion`。如果用的是非 Electron 管理的 profile，还可以直接查看组装后的插件树：
 
 ```powershell
-dsh --profile desktop --help   # 列出组装后的插件树
+dsh --profile web --dump-config     # 找 "- id: notify-completion" 这一行
 ```
+
+> `desktop` profile 由 Electron 应用独占管理，所以在 Electron 之外 `dsh --profile desktop` 会拒绝启动或 dump 它。要用 `dsh plugin --profile desktop …`，或者直接在运行中的应用里看。
 
 如果不想重启，也可以直接手动往 `$env:DSH_PROFILE_DIR\cordis.patch.yml` 加一行：
 
@@ -181,8 +207,11 @@ messageTemplate: |-
 ```powershell
 npm install
 npm test               # 42 项测试：纯逻辑、通知脚本，以及真实的 Cordis 运行时
-npm run test:notify    # 真实弹出一条 Windows 通知
+node demo.mjs          # 装载插件并真实弹出一条 Windows 通知
+npm run test:notify    # 只验证通知脚本
 ```
+
+`demo.mjs` 是端到端检查：它搭一个 Cordis 上下文并提供插件注入的两个服务，发出一次 `running → idle` 轮次，且把 `powershellPath` 留作默认值，因此会走真实的 shim、弹出真实的通知。
 
 测试分三层：
 

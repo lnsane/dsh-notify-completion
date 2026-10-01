@@ -30,19 +30,30 @@ No extra PowerShell module is required: the toast is posted through the Windows 
 
 ## Install
 
-The plugin ships as a DSH **bundle**: a package whose `cordis.patch.yml` inserts its plugin row into the profile.
+The plugin ships as a DSH **bundle**: a package whose `cordis.patch.yml` inserts its plugin row into the profile. Installing the package and registering the bundle are therefore one step — DSH's own plugin manager does both.
 
-### From a Git checkout
+### The supported way
 
 ```powershell
-# 1. Make the package resolvable from the profile.
-cd $env:DSH_PROFILE_DIR          # e.g. C:\Users\<you>\.dsh\profiles\desktop
-npm install "github:lnsane/dsh-notify-completion"
-
-# 2. Add the bundle to the profile's bundle list.
+dsh plugin --profile desktop add git+https://github.com/lnsane/dsh-notify-completion.git
 ```
 
-In `$env:DSH_PROFILE_DIR\package.json`:
+This adds the dependency to `$DSH_PROFILE_DIR\package.json` **and** appends `dsh-notify-completion` to its `dsh.profile.bundles` list. Restart DSH and the plugin is live.
+
+Swap `desktop` for whichever profile you run (`dsh plugin --profile web add …`, and so on).
+
+> **Use `git+https://…`, not the `github:owner/repo` shorthand.** DSH installs with pnpm, which happily resolves the shorthand over HTTPS — but if you ever install the package with plain `npm`, the `github:` shorthand resolves to **SSH** (`git+ssh://git@github.com/…`) and fails on a machine without a GitHub SSH key. The explicit `git+https://` URL works under both package managers.
+
+### By hand
+
+If you would rather not use the plugin manager, install the package into the profile and register the bundle yourself:
+
+```powershell
+cd $env:DSH_PROFILE_DIR          # e.g. C:\Users\<you>\.dsh\profiles\desktop
+pnpm add git+https://github.com/lnsane/dsh-notify-completion.git
+```
+
+Then add the bundle name to `$env:DSH_PROFILE_DIR\package.json`:
 
 ```json
 {
@@ -62,11 +73,26 @@ Restart DSH. The row is inserted automatically; no `cordis.patch.yml` edit is re
 
 ### Verifying the installation
 
-The plugin appears as a Loader entry named `notify-completion`:
+```powershell
+dsh plugin --profile desktop list
+```
+
+That lists the profile's installed plugin packages:
+
+```
+dsh-profile-desktop C:\Users\<you>\.dsh\profiles\desktop (PRIVATE)
+│
+│   dependencies:
+└── dsh-notify-completion@0.1.0
+```
+
+The plugin's Loader row is named `notify-completion`. For a non-Electron profile you can also inspect the composed tree directly:
 
 ```powershell
-dsh --profile desktop --help   # lists the composed tree
+dsh --profile web --dump-config     # look for "- id: notify-completion"
 ```
+
+> The `desktop` profile is owned exclusively by the Electron app, so `dsh --profile desktop` refuses to boot or dump it outside Electron. `dsh plugin --profile desktop …` and the running app itself are the ways in.
 
 If you would rather not restart, add the row by hand to `$env:DSH_PROFILE_DIR\cordis.patch.yml` instead:
 
@@ -181,8 +207,11 @@ The rule is deliberately narrow, because a notification that fires at the wrong 
 ```powershell
 npm install
 npm test               # 42 tests: pure logic, the shim, and a real Cordis runtime
-npm run test:notify    # raise one real Windows notification
+node demo.mjs          # load the plugin and raise one real Windows notification
+npm run test:notify    # exercise the notification shim alone
 ```
+
+`demo.mjs` is the end-to-end check: it builds a Cordis context with the two services the plugin injects, emits a `running → idle` turn, and leaves `powershellPath` at its default so the real shim runs and a real toast appears.
 
 The suite covers three layers:
 
